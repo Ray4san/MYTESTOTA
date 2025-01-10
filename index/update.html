@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP32 BLE OTA</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 0;
+            padding: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            margin: 50px auto;
+            width: 90%;
+            max-width: 600px;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+        h1 {
+            color: #333;
+        }
+        input[type="file"] {
+            margin: 20px 0;
+        }
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 5px;
+        }
+        button:hover {
+            background-color: #0056b3;
+        }
+        .status {
+            margin-top: 20px;
+            color: #666;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>ESP32 BLE OTA Update</h1>
+        <button id="connectBtn">Connect to ESP32</button>
+        <br><br>
+        <input type="file" id="firmware" accept=".bin" required>
+        <br>
+        <button id="uploadBtn" disabled>Upload and Update</button>
+        <div class="status" id="status">Status: Not connected</div>
+    </div>
+    <script>
+        let device, server, otaCharacteristic;
+        const serviceUUID = "c8659210-af91-4ad3-a995-a58d6fd26145"; // OTA service UUID
+        const characteristicUUID = "c8659211-af91-4ad3-a995-a58d6fd26145"; // OTA characteristic UUID
+        const statusDiv = document.getElementById("status");
+        const connectBtn = document.getElementById("connectBtn");
+        const uploadBtn = document.getElementById("uploadBtn");
+        const firmwareInput = document.getElementById("firmware");
+
+        async function connectToDevice() {
+            try {
+                statusDiv.textContent = "Status: Connecting...";
+                device = await navigator.bluetooth.requestDevice({
+                    acceptAllDevices: false,
+                    filters: [{ services: [serviceUUID] }],
+                });
+                server = await device.gatt.connect();
+                const service = await server.getPrimaryService(serviceUUID);
+                otaCharacteristic = await service.getCharacteristic(characteristicUUID);
+
+                statusDiv.textContent = "Status: Connected to ESP32!";
+                uploadBtn.disabled = false;
+            } catch (error) {
+                statusDiv.textContent = "Error: " + error.message;
+            }
+        }
+
+        async function uploadFirmware() {
+            const file = firmwareInput.files[0];
+            if (!file) {
+                alert("Please select a firmware file.");
+                return;
+            }
+
+            try {
+                statusDiv.textContent = "Uploading firmware...";
+                const fileBuffer = await file.arrayBuffer();
+                const chunkSize = 512; // BLE MTU limit
+                for (let i = 0; i < fileBuffer.byteLength; i += chunkSize) {
+                    const chunk = fileBuffer.slice(i, i + chunkSize);
+                    await otaCharacteristic.writeValue(new Uint8Array(chunk));
+                    statusDiv.textContent = `Uploading... ${Math.min(
+                        ((i + chunkSize) / fileBuffer.byteLength) * 100,
+                        100
+                    ).toFixed(2)}%`;
+                }
+                statusDiv.textContent = "Upload complete! Rebooting device...";
+            } catch (error) {
+                statusDiv.textContent = "Upload failed: " + error.message;
+            }
+        }
+
+        connectBtn.addEventListener("click", connectToDevice);
+        uploadBtn.addEventListener("click", uploadFirmware);
+    </script>
+</body>
+</html>
